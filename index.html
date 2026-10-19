@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>歩ログ 暗号化ベンチマーク | 8MB</title>
+<style>:root{color-scheme:dark}body{margin:0;background:#071a1d;color:#e4fffa;font-family:system-ui,'Noto Sans JP',sans-serif}main{max-width:660px;margin:auto;padding:22px 16px 48px}h1{font-size:1.4rem;color:#8df8e4}.card{border:1px solid #346d6b;border-radius:16px;padding:17px;margin:14px 0;background:#10292c}button{background:#38d5b6;color:#042a24;font-size:1rem;font-weight:700;border:0;border-radius:12px;padding:14px;width:100%;cursor:pointer}button:disabled{opacity:.45}input{width:100%;box-sizing:border-box;padding:12px;border-radius:9px;background:#092024;color:white;border:1px solid #4e9991;font-size:1rem}label{display:block;margin:10px 0 5px}small,.muted{color:#a8c6c3}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}td{border-bottom:1px solid #325052;padding:10px 2px}td:last-child{text-align:right;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}#status{min-height:1.5em;color:#a7f5d6}.pass{color:#a7f5d6}.fail{color:#ffafaa}</style></head><body><main>
+<h1>🔐 歩ログ 暗号化ベンチマーク</h1><p>Android Chromeで <strong>8 MiB（8,388,608バイト）</strong> のダミーデータを用い、PBKDF2 250,000回・AES-256-GCMの処理時間を測ります。</p>
+<section class="card"><strong>完全独立・非破壊テスト</strong><p class="muted">歩ログ本体・GPS・履歴には一切触れません。ダミーデータは端末のメモリ上だけに作成し、外部送信も保存もしません。</p><label for="password">試験用パスワード（8文字以上）</label><input id="password" type="password" autocomplete="off" placeholder="本番用ではないパスワード"><p><small>同じパスワードを毎回使う必要はありません。本番の秘密情報は入力しないでください。</small></p><button id="run">8MB ベンチマーク開始</button><p id="status" role="status" aria-live="polite">待機中</p></section>
+<section class="card"><strong>測定結果</strong><table><tbody><tr><td>鍵素材の読み込み</td><td id="import">—</td></tr><tr><td>PBKDF2 鍵生成（250,000回）</td><td id="derive">—</td></tr><tr><td>AES-256-GCM 暗号化</td><td id="encrypt">—</td></tr><tr><td>AES-256-GCM 復号</td><td id="decrypt">—</td></tr><tr><td>合計（上記4工程）</td><td id="total">—</td></tr><tr><td>復号内容の照合</td><td id="verify">—</td></tr></tbody></table><p class="muted" style="font-size:.84rem">測定値は実機の負荷やブラウザで変動します。ダミー生成時間・画面描画・ネットワーク取得・復号後のアプリ起動時間は合計に含めていません。</p></section>
+<section class="card"><strong>環境情報</strong><pre id="env"></pre><p class="muted">GitHub PagesなどのHTTPS環境で開いてください。Files by Googleの content:// 直接起動では暗号APIが使えない場合があります。</p></section>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const bytes=8*1024*1024;
+const fmt=x=>x.toFixed(2)+' ms';
+const tick=()=>new Promise(resolve=>setTimeout(resolve,30));
+$('env').textContent='安全な実行環境: '+(isSecureContext?'はい':'いいえ')+'\nWeb Crypto: '+(!!(globalThis.crypto&&crypto.subtle)?'利用可能':'利用不可')+'\nブラウザ: '+navigator.userAgent;
+$('run').addEventListener('click',async()=>{
+ const button=$('run'),status=$('status');
+ button.disabled=true;
+ for(const id of ['import','derive','encrypt','decrypt','total','verify'])$(id).textContent='—';
+ let data,encrypted,decrypted,key,material;
+ try{
+  if(!isSecureContext||!globalThis.crypto?.subtle)throw new Error('Web Cryptoが使えません。GitHub PagesのHTTPSから起動してください。');
+  const password=$('password').value;
+  if(password.length<8)throw new Error('試験用パスワードを8文字以上入力してください。');
+  status.textContent='8 MiB のダミーデータを準備中…';await tick();
+  data=new Uint8Array(bytes);
+  // Predictable dummy data only; no sensitive content and no RNG-heavy 8MB allocation.
+  for(let i=0;i<bytes;i++)data[i]=i&255;
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const passwordBytes=new TextEncoder().encode(password);
+  status.textContent='鍵素材を読み込み中…';await tick();
+  let start=performance.now();
+  material=await crypto.subtle.importKey('raw',passwordBytes,'PBKDF2',false,['deriveKey']);
+  const tImport=performance.now()-start;$('import').textContent=fmt(tImport);
+  status.textContent='PBKDF2 250,000回で鍵を生成中…';await tick();
+  start=performance.now();
+  key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  const tDerive=performance.now()-start;$('derive').textContent=fmt(tDerive);
+  status.textContent='8 MiB を暗号化中…';await tick();
+  start=performance.now();
+  encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,data);
+  const tEncrypt=performance.now()-start;$('encrypt').textContent=fmt(tEncrypt);
+  status.textContent='暗号化データを復号中…';await tick();
+  start=performance.now();
+  decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,encrypted);
+  const tDecrypt=performance.now()-start;$('decrypt').textContent=fmt(tDecrypt);
+  $('total').textContent=fmt(tImport+tDerive+tEncrypt+tDecrypt);
+  status.textContent='復号結果を照合中…';await tick();
+  const check=new Uint8Array(decrypted);let ok=check.length===data.length;
+  if(ok)for(let i=0;i<bytes;i++){if(check[i]!==data[i]){ok=false;break;}}
+  $('verify').textContent=ok?'一致（成功）':'不一致（失敗）';$('verify').className=ok?'pass':'fail';
+  status.textContent=ok?'測定完了：暗号化・復号とも成功':'照合失敗';
+ }catch(e){status.textContent='エラー: '+e.message;}
+ finally{data=null;encrypted=null;decrypted=null;key=null;material=null;button.disabled=false;}
+});
+</script></main></body></html>
