@@ -1,56 +1,6 @@
-<!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>歩ログ 暗号化ベンチマーク | 8MB</title>
-<style>:root{color-scheme:dark}body{margin:0;background:#071a1d;color:#e4fffa;font-family:system-ui,'Noto Sans JP',sans-serif}main{max-width:660px;margin:auto;padding:22px 16px 48px}h1{font-size:1.4rem;color:#8df8e4}.card{border:1px solid #346d6b;border-radius:16px;padding:17px;margin:14px 0;background:#10292c}button{background:#38d5b6;color:#042a24;font-size:1rem;font-weight:700;border:0;border-radius:12px;padding:14px;width:100%;cursor:pointer}button:disabled{opacity:.45}input{width:100%;box-sizing:border-box;padding:12px;border-radius:9px;background:#092024;color:white;border:1px solid #4e9991;font-size:1rem}label{display:block;margin:10px 0 5px}small,.muted{color:#a8c6c3}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}td{border-bottom:1px solid #325052;padding:10px 2px}td:last-child{text-align:right;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}#status{min-height:1.5em;color:#a7f5d6}.pass{color:#a7f5d6}.fail{color:#ffafaa}</style></head><body><main>
-<h1>🔐 歩ログ 暗号化ベンチマーク</h1><p>Android Chromeで <strong>8 MiB（8,388,608バイト）</strong> のダミーデータを用い、PBKDF2 250,000回・AES-256-GCMの処理時間を測ります。</p>
-<section class="card"><strong>完全独立・非破壊テスト</strong><p class="muted">歩ログ本体・GPS・履歴には一切触れません。ダミーデータは端末のメモリ上だけに作成し、外部送信も保存もしません。</p><label for="password">試験用パスワード（8文字以上）</label><input id="password" type="password" autocomplete="off" placeholder="本番用ではないパスワード"><p><small>同じパスワードを毎回使う必要はありません。本番の秘密情報は入力しないでください。</small></p><button id="run">8MB ベンチマーク開始</button><p id="status" role="status" aria-live="polite">待機中</p></section>
-<section class="card"><strong>測定結果</strong><table><tbody><tr><td>鍵素材の読み込み</td><td id="import">—</td></tr><tr><td>PBKDF2 鍵生成（250,000回）</td><td id="derive">—</td></tr><tr><td>AES-256-GCM 暗号化</td><td id="encrypt">—</td></tr><tr><td>AES-256-GCM 復号</td><td id="decrypt">—</td></tr><tr><td>合計（上記4工程）</td><td id="total">—</td></tr><tr><td>復号内容の照合</td><td id="verify">—</td></tr></tbody></table><p class="muted" style="font-size:.84rem">測定値は実機の負荷やブラウザで変動します。ダミー生成時間・画面描画・ネットワーク取得・復号後のアプリ起動時間は合計に含めていません。</p></section>
-<section class="card"><strong>環境情報</strong><pre id="env"></pre><p class="muted">GitHub PagesなどのHTTPS環境で開いてください。Files by Googleの content:// 直接起動では暗号APIが使えない場合があります。</p></section>
-<script>
-'use strict';
-const $=id=>document.getElementById(id);
-const bytes=8*1024*1024;
-const fmt=x=>x.toFixed(2)+' ms';
-const tick=()=>new Promise(resolve=>setTimeout(resolve,30));
-$('env').textContent='安全な実行環境: '+(isSecureContext?'はい':'いいえ')+'\nWeb Crypto: '+(!!(globalThis.crypto&&crypto.subtle)?'利用可能':'利用不可')+'\nブラウザ: '+navigator.userAgent;
-$('run').addEventListener('click',async()=>{
- const button=$('run'),status=$('status');
- button.disabled=true;
- for(const id of ['import','derive','encrypt','decrypt','total','verify'])$(id).textContent='—';
- let data,encrypted,decrypted,key,material;
- try{
-  if(!isSecureContext||!globalThis.crypto?.subtle)throw new Error('Web Cryptoが使えません。GitHub PagesのHTTPSから起動してください。');
-  const password=$('password').value;
-  if(password.length<8)throw new Error('試験用パスワードを8文字以上入力してください。');
-  status.textContent='8 MiB のダミーデータを準備中…';await tick();
-  data=new Uint8Array(bytes);
-  // Predictable dummy data only; no sensitive content and no RNG-heavy 8MB allocation.
-  for(let i=0;i<bytes;i++)data[i]=i&255;
-  const salt=crypto.getRandomValues(new Uint8Array(16));
-  const iv=crypto.getRandomValues(new Uint8Array(12));
-  const passwordBytes=new TextEncoder().encode(password);
-  status.textContent='鍵素材を読み込み中…';await tick();
-  let start=performance.now();
-  material=await crypto.subtle.importKey('raw',passwordBytes,'PBKDF2',false,['deriveKey']);
-  const tImport=performance.now()-start;$('import').textContent=fmt(tImport);
-  status.textContent='PBKDF2 250,000回で鍵を生成中…';await tick();
-  start=performance.now();
-  key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
-  const tDerive=performance.now()-start;$('derive').textContent=fmt(tDerive);
-  status.textContent='8 MiB を暗号化中…';await tick();
-  start=performance.now();
-  encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,data);
-  const tEncrypt=performance.now()-start;$('encrypt').textContent=fmt(tEncrypt);
-  status.textContent='暗号化データを復号中…';await tick();
-  start=performance.now();
-  decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,encrypted);
-  const tDecrypt=performance.now()-start;$('decrypt').textContent=fmt(tDecrypt);
-  $('total').textContent=fmt(tImport+tDerive+tEncrypt+tDecrypt);
-  status.textContent='復号結果を照合中…';await tick();
-  const check=new Uint8Array(decrypted);let ok=check.length===data.length;
-  if(ok)for(let i=0;i<bytes;i++){if(check[i]!==data[i]){ok=false;break;}}
-  $('verify').textContent=ok?'一致（成功）':'不一致（失敗）';$('verify').className=ok?'pass':'fail';
-  status.textContent=ok?'測定完了：暗号化・復号とも成功':'照合失敗';
- }catch(e){status.textContent='エラー: '+e.message;}
- finally{data=null;encrypted=null;decrypted=null;key=null;material=null;button.disabled=false;}
-});
-</script></main></body></html>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>歩ログ 暗号化起動試験 Phase 2</title><style>body{background:#071c1d;color:#c9f8ed;font:16px system-ui;margin:0;padding:20px}main{max-width:560px;margin:20px auto}section{border:1px solid #386c65;border-radius:16px;padding:20px;margin:18px 0;background:#102e2c}h1{font-size:1.5rem}h2{font-size:1.1rem}button,input{width:100%;box-sizing:border-box;border-radius:10px;padding:13px;font:inherit;margin:7px 0}button{background:#36cdb2;border:0;color:#05221e;font-weight:700}input{background:#092325;color:#fff;border:1px solid #4b9488}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#aaccc5}.ok{color:#6af5b3}</style></head><body><main><h1>🔐 歩ログ 暗号化起動試験 Phase 2</h1><section><p>暗号化済みのダミーJavaScriptを復号し、起動する実験です。歩ログ本体は含まれません。</p><p><b>試験専用パスワード： <code>ayalog-demo-2026</code></b></p><p><small>公開された試験用パスワードです。本物の秘密情報には使用しないでください。</small></p><input type="password" id="pw" placeholder="上記の試験用パスワードを入力"><button id="unlock">復号してダミーを起動</button><pre id="status">待機中</pre></section><section id="app" hidden></section><section><small>暗号化：AES-256-GCM / PBKDF2-SHA256 250,000回。GPS位置情報は送信・保存しません。履歴保存はこのサイトのlocalStorageにダミー記録のみを保存します。復号したプログラムはブラウザの開発者ツール等で取得できるため、この方式は完全なソース保護ではありません。</small></section></main><script>
+const salt=Uint8Array.from(atob("x3r1sEIYyPc4mjWOcF3Qvw=="),c=>c.charCodeAt(0));
+const iv=Uint8Array.from(atob("pRQU4yAmXgcKy6Go"),c=>c.charCodeAt(0));
+const ciphertext=Uint8Array.from(atob("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"),c=>c.charCodeAt(0));
+document.getElementById('unlock').onclick=async()=>{const status=document.getElementById('status');try{if(!window.isSecureContext||!crypto.subtle)throw Error('HTTPSで開いてください');status.textContent='鍵生成・復号中…';const start=performance.now();const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(document.getElementById('pw').value),'PBKDF2',false,['deriveKey']);const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['decrypt']);const midpoint=performance.now();const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ciphertext);const done=performance.now();const code=new TextDecoder().decode(plain);new Function(code)();status.textContent='復号・起動成功！ 鍵生成 '+(midpoint-start).toFixed(1)+'ms / 復号 '+(done-midpoint).toFixed(1)+'ms';}catch(e){status.textContent='起動失敗：'+(e.name==='OperationError'?'パスワードが一致しないかデータが破損しています':e.message);}};
+</script></body></html>
