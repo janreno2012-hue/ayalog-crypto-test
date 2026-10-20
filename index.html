@@ -7178,3 +7178,49 @@ function install(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
 </script>
+
+<!-- PHASE 4B STEP 2: safe, reversible runtime switch. Original source untouched. -->
+<script id="ayalog-crypto-step2-safe-switch">
+(()=>{'use strict';
+const payload={"salt":"SovLEX8mSIQh6rBzdRWehA==","iv":"chVc6xt5Mkh/S52e","ciphertext":"JmLyx+Bq8WR+E/G9uxAbua4wXACpMojLORb0fF0St+zJkr8LLGDK2Vvx6SY9eceHZaqBpFz9IhQahvkDLtQI1pqZjfQpZXOuVST+n8D5AxzsrIGTTLg2PAHYueUCnBJxD5Mqs/rv/HgiHowj7nKGrvFcx+3gz2OwKPJOkNkwUOpGkggNE2xJXtGreolqfyp8JAgIjTrHAcVb0/712WG2bRIRERSuhCNVbUTPF1g9uzXEmSlK5BlB/JVcCFb8G5HH0acOBOJa+xtR/xFB/32fmLeyPUQESvrQ51NcJhvREn3o7yDHW45+uKc="};
+const pw='ayalog-demo-2026'; // TEST ONLY, public password
+const decode=v=>Uint8Array.from(atob(v),c=>c.charCodeAt(0));
+const original=window.AYALOG_ECO3_CAN_PAINT;
+let active=false, last='未実行';
+function status(){const e=document.getElementById('ayalogCryptoStep2Status');if(e)e.textContent='Phase 4B STEP2: '+last+' / 切替 '+(active?'ON':'OFF');}
+function restore(){window.AYALOG_ECO3_CAN_PAINT=original;active=false;last='元の処理へ復帰';status();console.info('[AYALOG CRYPTO STEP2] restored');}
+async function enable(){
+ const btn=document.getElementById('ayalogCryptoStep2Enable');if(btn)btn.disabled=true;
+ last='復号中';status();const t0=performance.now();
+ try{
+  if(typeof original!=='function')throw Error('元の省電力判定がありません');
+  if(!crypto?.subtle)throw Error('Web Cryptoが使えません');
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:decode(payload.salt),iterations:250000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+  const code=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(payload.iv)},key,decode(payload.ciphertext)));
+  new Function(code)();
+  const alternate=window.AYALOG_ECO3_CAN_PAINT_CRYPTO_STEP2;
+  if(typeof alternate!=='function')throw Error('復号コードに判定関数がありません');
+  const cases=[
+   ['現在',()=>{}],
+   ['document.hiddenは実環境を使用',()=>{}]
+  ];
+  for(const [name] of cases){if(original()!==alternate())throw Error('切替前の判定不一致: '+name);}
+  window.AYALOG_ECO3_CAN_PAINT=function(){try{return alternate();}catch(e){console.error('[AYALOG CRYPTO STEP2] fallback',e);restore();return original();}};
+  active=true;last='PASS / 復号・一致・切替成功 / '+(performance.now()-t0).toFixed(1)+'ms';
+  console.info('[AYALOG CRYPTO STEP2]',last);
+ }catch(e){restore();last='FAIL / '+(e?.message||String(e))+'（元の処理を維持）';console.error('[AYALOG CRYPTO STEP2]',e);}
+ status();if(btn)btn.disabled=false;
+}
+function install(){if(document.getElementById('ayalogCryptoStep2Panel'))return;
+ const panel=document.createElement('div');panel.id='ayalogCryptoStep2Panel';
+ panel.style.cssText='position:fixed;left:12px;right:12px;bottom:100px;z-index:2147483641;background:#112d2b;color:#eaffff;border:1px solid #7ae4d6;border-radius:12px;padding:10px;font:13px sans-serif;box-shadow:0 3px 16px #0009';
+ const t=document.createElement('div');t.id='ayalogCryptoStep2Status';t.style.cssText='margin-bottom:8px;overflow-wrap:anywhere';
+ const enableBtn=document.createElement('button');enableBtn.id='ayalogCryptoStep2Enable';enableBtn.textContent='STEP2 暗号化版へ切替';enableBtn.style.cssText='font-size:12px;padding:8px';enableBtn.addEventListener('click',enable);
+ const back=document.createElement('button');back.textContent='元へ戻す';back.style.cssText='font-size:12px;padding:8px;margin-left:6px';back.addEventListener('click',restore);
+ const close=document.createElement('button');close.textContent='閉じる';close.style.cssText='font-size:12px;padding:8px;margin-left:6px';close.addEventListener('click',()=>{restore();panel.remove();});
+ panel.append(t,enableBtn,back,close);document.body.append(panel);status();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
+})();
+</script>
