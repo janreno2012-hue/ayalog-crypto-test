@@ -5823,17 +5823,29 @@ log('ONE-WIRE READY');document.documentElement.dataset.assembly3672='replay-deta
   No localStorage migration or event-handler replacement in this baseline.
 -->
 <script id="asm370-calte-foundation" type="application/json">{"assembly":"37.0","project":"AYA LOG WALK CALTE","source":"36.83","phase":"baseline","preserveExistingRoutes":true,"storageMigration":false}</script>
-<div id="ayalogCryptoStep3Panel" style="position:fixed;z-index:2147483645;bottom:180px;left:3%;width:94%;max-width:640px;padding:12px;border:1px solid #5be0d7;border-radius:16px;background:#072d2df2;color:#eaffff;font:14px system-ui;box-shadow:0 5px 24px #0009"><div id="ayalogCryptoStep3Status" style="margin-bottom:8px">Phase 4B STEP3 FIX1: 元の影計算 / 切替 OFF</div><button id="ayalogCryptoStep3Enable" type="button" style="font-size:13px;padding:10px">STEP3 暗号化版へ切替</button> <button id="ayalogCryptoStep3Restore" type="button" style="font-size:13px;padding:10px">元へ戻す</button> <button id="ayalogCryptoStep3Close" type="button" style="font-size:13px;padding:10px">閉じる</button></div>
+<div id="ayalogCryptoStep3Panel" style="position:fixed;z-index:2147483645;bottom:180px;left:3%;width:94%;max-width:640px;padding:12px;border:1px solid #5be0d7;border-radius:16px;background:#072d2df2;color:#eaffff;font:14px system-ui;box-shadow:0 5px 24px #0009"><div id="ayalogCryptoStep3Status" style="margin-bottom:8px">Phase 4B STEP3 FIX2: 元の影計算 / 切替 OFF</div><button id="ayalogCryptoStep3Enable" type="button" style="font-size:13px;padding:10px">STEP3 暗号化版へ切替</button> <button id="ayalogCryptoStep3Restore" type="button" style="font-size:13px;padding:10px">元へ戻す</button> <button id="ayalogCryptoStep3Close" type="button" style="font-size:13px;padding:10px">閉じる</button></div>
 <script id="ayalog-crypto-step3-shadow">(()=>{'use strict';
 const payload={"salt":"+jHCgWf2U0K0DNwCHExs+A==","iv":"OEPXGDWpa4EMMWCB","ciphertext":"D8Yxf2zMtkSBL1MFDtDO46FMwKYkJ9bpnXA0fNAbet4hfbvmMhDl6F4EqIQ2+ZvsLHUpMoYYcogi6HzhChPla51lUM0xwtVntLfrjW/WhN3d6TYsMQPViNRlj0k3Aa6And1jAbvoBSNDEbqWfroKmJTR/dSbVnL2tM+I4h0VwHEsbN/fP9xu9uvC3YtFDqX56M+rNHtCcQTuVXiC0B2iHDmSg2RaTegGlzgj+Y8xADmDxcE4NKZD/AA0KAx5wrFZqn4U1FqVn8UZOrsvmpz43gez4MbkV2v10EzJVgT9IRUmvlC4ccVSBA2Qg0RllWaJEeC15tf2XtAwVflDic4IDjhanNqihTGDRMWIbyhltdm5Baexcf8GMK2pwepmhg=="};
 const pw='ayalog-demo-2026'; // TEST ONLY, public password
 const decode=v=>Uint8Array.from(atob(v),c=>c.charCodeAt(0));
 const original=window.asm352ShadowPoint;
-let active=false,last='未実行';
+let active=false,last='未実行',generation=0,closed=false;
 const E=id=>document.getElementById(id);
-function status(){const e=E('ayalogCryptoStep3Status');if(e)e.textContent='Phase 4B STEP3 FIX1: '+last+' / 切替 '+(active?'ON':'OFF');}
-function restore(){window.asm352ShadowPoint=original;active=false;last='元の影計算へ復帰';status();}
-async function enable(){const b=E('ayalogCryptoStep3Enable');if(b)b.disabled=true;last='復号中';status();const t0=performance.now();
+function status(){const e=E('ayalogCryptoStep3Status');if(e)e.textContent='Phase 4B STEP3 FIX2: '+last+' / 切替 '+(active?'ON':'OFF');}
+function restore(){generation++;window.asm352ShadowPoint=original;active=false;last='元の影計算へ復帰';status();}
+// The guard catches errors from the decrypted implementation and fails closed to the original.
+function guardedShadowPoint(...args){
+ try{
+  const result=guardedShadowPoint.impl(...args);
+  if(!result || !Number.isFinite(result.x) || !Number.isFinite(result.y) || !Number.isFinite(result.t))throw Error('影計算の出力が不正です');
+  return result;
+ }catch(err){
+  restore();last='自動復帰 / '+(err?.message||String(err));status();
+  console.error('[AYALOG STEP3 FIX2] automatic fallback',err);
+  return original(...args);
+ }
+}
+async function enable(){if(closed)return;const ticket=++generation;const b=E('ayalogCryptoStep3Enable');if(b)b.disabled=true;last='復号中';status();const t0=performance.now();
 try{
  if(typeof original!=='function')throw Error('元の影計算が見つかりません');
  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
@@ -5844,13 +5856,14 @@ try{
  if(typeof candidate!=='function')throw Error('復号結果が関数ではありません');
  const cases=[ [{x:20,y:30,alt:0},0,100],[{x:80,y:50,alt:50},0,100],[{x:160,y:100,alt:100},0,100],[{x:0,y:0,alt:-30},-20,80],[{x:11,y:23,alt:15},15,15],[{x:5,y:7,alt:NaN},0,100],[{x:3,y:4,alt:4},NaN,100] ];
  for(const args of cases){const a=original(...args),b=candidate(...args);if(JSON.stringify(a)!==JSON.stringify(b))throw Error('影計算の不一致 '+JSON.stringify(args));}
- window.asm352ShadowPoint=candidate;active=true;last='PASS / 復号・7条件一致・切替成功 / '+(performance.now()-t0).toFixed(1)+'ms';
+ if(ticket!==generation || closed)return;
+ guardedShadowPoint.impl=candidate;window.asm352ShadowPoint=guardedShadowPoint;active=true;last='PASS / 復号・7条件一致・切替成功 / '+(performance.now()-t0).toFixed(1)+'ms';
  console.info('[AYALOG STEP3] shadow function switched; tests=7');
-}catch(e){restore();last='FAIL / '+(e?.message||String(e));console.error('[AYALOG STEP3]',e);}finally{if(b)b.disabled=false;status();}
+}catch(e){if(ticket!==generation || closed)return;restore();last='FAIL / '+(e?.message||String(e));console.error('[AYALOG STEP3]',e);}finally{if(b)b.disabled=false;status();}
 }
 E('ayalogCryptoStep3Enable')?.addEventListener('click',enable);
 E('ayalogCryptoStep3Restore')?.addEventListener('click',restore);
-E('ayalogCryptoStep3Close')?.addEventListener('click',()=>E('ayalogCryptoStep3Panel')?.remove());
+E('ayalogCryptoStep3Close')?.addEventListener('click',()=>{restore();closed=true;E('ayalogCryptoStep3Panel')?.remove();});
 status();
 })();</script>
 </body></html>
